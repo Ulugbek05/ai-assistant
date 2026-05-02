@@ -127,7 +127,7 @@
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            model: "meta-llama/llama-4-scout-17b-16e-instruct",
+            model: "meta-llama/llama-4-scout-17b-16e-instruct",,
             messages: [{ role: "user", content: userContent }],
             max_tokens: 1000
           })
@@ -150,7 +150,7 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "qwen-qwq-32b",
+          model: "qwen/qwen3-32b",,
           messages: qwenMessages,
           max_tokens: 2000
         })
