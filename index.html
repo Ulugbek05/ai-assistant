@@ -21,7 +21,6 @@
     #imgBtn { background: none; border: none; font-size: 22px; cursor: pointer; }
     #sendBtn { background: #7c83fd; border: none; color: white; padding: 10px 18px; border-radius: 20px; cursor: pointer; font-size: 14px; }
     #fileInput { display: none; }
-    .typing { color: #7c83fd; font-style: italic; }
   </style>
 </head>
 <body>
@@ -46,7 +45,6 @@
   const ALLOWED_ID = "953511269";
   const tg = window.Telegram?.WebApp;
 
-  // Telegram tekshiruvi
   if (tg && tg.initDataUnsafe?.user) {
     const userId = String(tg.initDataUnsafe.user.id);
     if (userId !== ALLOWED_ID) {
@@ -99,12 +97,10 @@
     addMsg(text || "📷 Rasm", "user");
     input.value = "";
 
-    const typingDiv = addMsg("⏳ Javob yozilmoqda...", "ai typing");
+    const typingDiv = addMsg("⏳ Javob yozilmoqda...", "ai");
 
-    // Xabar tuzish
     let userContent;
     if (imageBase64) {
-      // Llama4 Vision — rasm tahlili
       userContent = [
         { type: "image_url", image_url: { url: `data:${imageType};base64,${imageBase64}` } },
         { type: "text", text: text || "Bu rasmni tahlil qil" }
@@ -120,8 +116,8 @@
     history.push({ role: "user", content: userContent });
 
     try {
-      // 1-qadam: Rasm bo'lsa Llama4 Vision
       let analysisText = null;
+
       if (Array.isArray(userContent)) {
         const visionRes = await fetch(WORKER_URL, {
           method: "POST",
@@ -136,11 +132,10 @@
         analysisText = visionData.choices[0].message.content;
       }
 
-      // 2-qadam: Qwen3 javob yozadi
       const qwenMessages = [
         {
           role: "system",
-          content: `Sen professional AI yordamchisan. Dasturlash, kiberxavfsizlik, OSINT bo'yicha yordam berasan. O'zbek tilida javob ber. Kod so'ralsa to'liq yoz.`
+          content: "Sen professional AI yordamchisan. Dasturlash, kiberxavfsizlik, OSINT bo'yicha yordam berasan. O'zbek tilida javob ber. Kod so'ralsa to'liq yoz."
         },
         ...history.slice(-10),
         ...(analysisText ? [{ role: "user", content: `Rasm tahlili: ${analysisText}\n\nShu asosida yordam ber.` }] : [])
@@ -150,7 +145,7 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "qwen/qwen3-32b",,
+          model: "qwen/qwen3-32b",
           messages: qwenMessages,
           max_tokens: 2000
         })
@@ -158,8 +153,8 @@
 
       const qwenData = await qwenRes.json();
       const reply = qwenData.choices[0].message.content
-.replace(/<think>[\s\S]*?<\/think>/g, "")
-.trim();
+        .replace(/<think>[\s\S]*?<\/think>/g, "")
+        .trim();
 
       history.push({ role: "assistant", content: reply });
       typingDiv.remove();
