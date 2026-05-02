@@ -158,8 +158,8 @@
 
       const qwenData = await qwenRes.json();
       const reply = qwenData.choices[0].message.content
-  .replace(/<think>[\s\S]*?<\/think>/g, "")
-  .trim();
+.replace(/<think>[\s\S]*?<\/think>/g, "")
+.trim();
 
       history.push({ role: "assistant", content: reply });
       typingDiv.remove();
