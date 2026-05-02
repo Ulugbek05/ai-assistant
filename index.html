@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Assistant</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #1a1a2e; color: #eee; font-family: sans-serif; height: 100vh; display: flex; flex-direction: column; }
+    #header { padding: 16px; background: #16213e; text-align: center; font-size: 18px; font-weight: bold; color: #7c83fd; border-bottom: 1px solid #2a2a4a; }
+    #messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+    .msg { max-width: 80%; padding: 12px 16px; border-radius: 16px; line-height: 1.5; font-size: 14px; }
+    .user { background: #7c83fd; align-self: flex-end; border-bottom-right-radius: 4px; }
+    .ai { background: #16213e; align-self: flex-start; border-bottom-left-radius: 4px; border: 1px solid #2a2a4a; }
+    .ai pre { background: #0f0f1a; padding: 10px; border-radius: 8px; overflow-x: auto; margin-top: 8px; font-size: 12px; }
+    #bottom { padding: 12px; background: #16213e; border-top: 1px solid #2a2a4a; }
+    #preview { padding: 8px; margin-bottom: 8px; display: none; }
+    #preview img { max-height: 100px; border-radius: 8px; }
+    #input-row { display: flex; gap: 8px; align-items: center; }
+    #input { flex: 1; background: #0f0f1a; border: 1px solid #2a2a4a; color: #eee; padding: 10px 14px; border-radius: 20px; font-size: 14px; outline: none; }
+    #imgBtn { background: none; border: none; font-size: 22px; cursor: pointer; }
+    #sendBtn { background: #7c83fd; border: none; color: white; padding: 10px 18px; border-radius: 20px; cursor: pointer; font-size: 14px; }
+    #fileInput { display: none; }
+    .typing { color: #7c83fd; font-style: italic; }
+  </style>
+</head>
+<body>
+
+<div id="header">🤖 AI Assistant</div>
+<div id="messages">
+  <div class="msg ai">Salom! Men AI yordamchiman. Kod, xavfsizlik, OSINT — istalgan savol bering. Rasm ham yuklasa bo'ladi! 👋</div>
+</div>
+
+<div id="bottom">
+  <div id="preview"><img id="previewImg" src="" alt=""></div>
+  <div id="input-row">
+    <button id="imgBtn">📎</button>
+    <input type="file" id="fileInput" accept="image/*">
+    <input type="text" id="input" placeholder="Xabar yozing...">
+    <button id="sendBtn">Yuborish</button>
+  </div>
+</div>
+
+<script>
+  const WORKER_URL = "https://aiproxy.ulugbekturgunov2002.workers.dev";
+  const ALLOWED_ID = "953511269";
+  const tg = window.Telegram?.WebApp;
+
+  // Telegram tekshiruvi
+  if (tg && tg.initDataUnsafe?.user) {
+    const userId = String(tg.initDataUnsafe.user.id);
+    if (userId !== ALLOWED_ID) {
+      document.body.innerHTML = '<div style="text-align:center;padding:50px;color:red"><h2>⛔ Kirish taqiqlangan</h2></div>';
+      throw new Error("Unauthorized");
+    }
+    tg.ready();
+    tg.expand();
+  }
+
+  let history = [];
+  let imageBase64 = null;
+  let imageType = null;
+
+  const messagesDiv = document.getElementById("messages");
+  const input = document.getElementById("input");
+  const fileInput = document.getElementById("fileInput");
+  const previewImg = document.getElementById("previewImg");
+  const preview = document.getElementById("preview");
+
+  document.getElementById("imgBtn").onclick = () => fileInput.click();
+
+  fileInput.onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const result = ev.target.result;
+      imageBase64 = result.split(",")[1];
+      imageType = file.type;
+      previewImg.src = result;
+      preview.style.display = "block";
+    };
+    reader.readAsDataURL(file);
+  };
+
+  function addMsg(text, role) {
+    const div = document.createElement("div");
+    div.className = `msg ${role}`;
+    div.innerHTML = text.replace(/```([\s\S]*?)```/g, "<pre>$1</pre>").replace(/\n/g, "<br>");
+    messagesDiv.appendChild(div);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    return div;
+  }
+
+  async function send() {
+    const text = input.value.trim();
+    if (!text && !imageBase64) return;
+
+    addMsg(text || "📷 Rasm", "user");
+    input.value = "";
+
+    const typingDiv = addMsg("⏳ Javob yozilmoqda...", "ai typing");
+
+    // Xabar tuzish
+    let userContent;
+    if (imageBase64) {
+      // Llama4 Vision — rasm tahlili
+      userContent = [
+        { type: "image_url", image_url: { url: `data:${imageType};base64,${imageBase64}` } },
+        { type: "text", text: text || "Bu rasmni tahlil qil" }
+      ];
+      imageBase64 = null;
+      imageType = null;
+      preview.style.display = "none";
+      fileInput.value = "";
+    } else {
+      userContent = text;
+    }
+
+    history.push({ role: "user", content: userContent });
+
+    try {
+      // 1-qadam: Rasm bo'lsa Llama4 Vision
+      let analysisText = null;
+      if (Array.isArray(userContent)) {
+        const visionRes = await fetch(WORKER_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "meta-llama/llama-4-scout-17b-16e-instruct",
+            messages: [{ role: "user", content: userContent }],
+            max_tokens: 1000
+          })
+        });
+        const visionData = await visionRes.json();
+        analysisText = visionData.choices[0].message.content;
+      }
+
+      // 2-qadam: Qwen3 javob yozadi
+      const qwenMessages = [
+        {
+          role: "system",
+          content: `Sen professional AI yordamchisan. Dasturlash, kiberxavfsizlik, OSINT bo'yicha yordam berasan. O'zbek tilida javob ber. Kod so'ralsa to'liq yoz.`
+        },
+        ...history.slice(-10),
+        ...(analysisText ? [{ role: "user", content: `Rasm tahlili: ${analysisText}\n\nShu asosida yordam ber.` }] : [])
+      ];
+
+      const qwenRes = await fetch(WORKER_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "qwen-qwq-32b",
+          messages: qwenMessages,
+          max_tokens: 2000
+        })
+      });
+
+      const qwenData = await qwenRes.json();
+      const reply = qwenData.choices[0].message.content;
+
+      history.push({ role: "assistant", content: reply });
+      typingDiv.remove();
+      addMsg(reply, "ai");
+
+    } catch (err) {
+      typingDiv.remove();
+      addMsg("❌ Xato: " + err.message, "ai");
+    }
+  }
+
+  document.getElementById("sendBtn").onclick = send;
+  input.onkeydown = (e) => { if (e.key === "Enter") send(); };
+</script>
+</body>
+</html>
